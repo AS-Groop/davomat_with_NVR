@@ -23,7 +23,9 @@ const store = {
   get viewAll() { return localStorage.getItem("va") || ""; },
   set viewAll(v) { v ? localStorage.setItem("va", v) : localStorage.removeItem("va"); },
 };
-const canViewAll = () => store.role === "hr" || store.role === "director" || store.viewAll === "1";
+const canViewAll = () => store.role === "hr" || store.role === "director" || store.role === "super_admin" || store.viewAll === "1";
+// super_admin — HR'ning barcha huquqlariga ega (+ kirish/chiqishni tuzatish)
+const isAdminRole = () => store.role === "hr" || store.role === "super_admin";
 
 function applyTheme() {
   const dark = store.theme === "dark";
@@ -146,6 +148,10 @@ const T = {
     admOnn: "✅ yoqilgan", admOff: "⏸ o'chirilgan", admLastCheck: "Oxirgi tekshiruv",
     admNvrRefresh: "🔄 NVR'dan yangilash", admNvrRefreshing: "Yangilanmoqda…",
     admNvrRefreshOk: "Yangilandi", admNvrRefreshFail: "Xato",
+    admAttEdit: "Kirish/chiqishni tuzatish",
+    admAttEditHint: "Xodim va sanani tanlang — kerakli kirish/chiqish vaqtini kiriting. Bo'sh qoldirsangiz, o'sha maydon bo'yicha tuzatish o'chiriladi.",
+    admAttIn: "Kirish", admAttOut: "Chiqish", admAttActual: "Haqiqiy",
+    admAttClear: "Tuzatishni o'chirish",
     admExcused: "✅ Uzrli", admNotExcused: "Uzrli deb belgilash", admToggleHide: "Yashirish", admToggleShow: "Ko'rsatish",
     admReasonHint: "Bugungi kun uchun qisqa izoh (dashboardda ko'rinadi). Bo'sh saqlansa — o'chiriladi.",
     admWtHint: "Xodim uchun maxsus ish boshlanish vaqti (masalan 13:00). Bo'sh saqlansa — o'chiriladi.",
@@ -313,6 +319,10 @@ const T = {
     admOnn: "✅ включён", admOff: "⏸ выключен", admLastCheck: "Последняя проверка",
     admNvrRefresh: "🔄 Обновить из NVR", admNvrRefreshing: "Обновление…",
     admNvrRefreshOk: "Обновлено", admNvrRefreshFail: "Ошибка",
+    admAttEdit: "Исправить приход/уход",
+    admAttEditHint: "Выберите сотрудника и дату — введите нужное время прихода/ухода. Если поле пустое, исправление по нему удаляется.",
+    admAttIn: "Приход", admAttOut: "Уход", admAttActual: "Фактически",
+    admAttClear: "Удалить исправление",
     admExcused: "✅ Уважит.", admNotExcused: "Отметить уважительным", admToggleHide: "Скрыть", admToggleShow: "Показать",
     admReasonHint: "Короткое примечание на сегодня (видно на дашборде). Пустое — удаляет.",
     admWtHint: "Особое время начала работы (напр. 13:00). Пустое — удаляет.",
@@ -548,7 +558,7 @@ function shell(inner) {
   const av = store.photo
     ? `<img src="photos/${esc(store.photo)}" alt="" onerror="this.parentNode.textContent='${esc(initials(store.name))}'">`
     : esc(initials(store.name));
-  const isAdmin = store.role === "hr";
+  const isAdmin = isAdminRole();
   // Rahbariyat (direktor, o'rinbosarlar) ham panelga kiradi — faqat ko'rish uchun
   const navItems = [
     { id: "home", ico: "🏠", lbl: t("navHome") },
@@ -1754,6 +1764,7 @@ const ADM_TILES = [
   { id: "empout", ico: "🚫", key: "admEmpOut" },
   { id: "expl", ico: "📋", key: "admExpl" },
   { id: "monitor", ico: "📡", key: "admMonitor" },
+  { id: "attedit", ico: "🛠", key: "admAttEdit", superOnly: true },
 ];
 
 async function viewAdmin() {
@@ -1766,8 +1777,9 @@ async function viewAdmin() {
 }
 
 async function admRenderMenu() {
-  const viewOnly = store.role !== "hr";
-  const list = viewOnly ? ADM_TILES.filter(x => x.view) : ADM_TILES;
+  const viewOnly = !isAdminRole();
+  const list = (viewOnly ? ADM_TILES.filter(x => x.view) : ADM_TILES)
+    .filter(x => !x.superOnly || store.role === "super_admin");
   const ov = viewOnly ? {} : ((await api("/api/mobile/admin/overview")).data || {});
   const badges = {
     monitor: ov.monitor_enabled ? t("admOnn") : t("admOff"),
@@ -1810,12 +1822,14 @@ async function admRenderSection() {
     exit_reason: () => admSecReason(true), late: admSecLate, holidays: admSecHolidays,
     hidden: admSecHidden, worktime: admSecWorktime, photo: admSecPhoto, olim: admSecOlim,
     interns: admSecInterns, exit: admSecExitReasons, resetpw: admSecResetPw, newacc: admSecNewAcc, accounts: admSecAccounts, empadd: admSecEmpAdd, empout: admSecEmpOut, latelist: admSecLateList, reyting: admSecRating, survey: admSecSurvey, yoqlama: admSecYoqlama,
-    expl: admSecExpl, monitor: admSecMonitor,
+    expl: admSecExpl, monitor: admSecMonitor, attedit: admSecAttendanceEdit,
   };
   // Rahbariyat faqat ko'rish bo'limlarini ocha oladi
-  if (store.role !== "hr") {
+  if (!isAdminRole()) {
     const allowed = ADM_TILES.filter(x => x.view).map(x => x.id);
     if (!allowed.includes(admSection)) { admSection = "menu"; return viewAdmin(); }
+  } else if (admSection === "attedit" && store.role !== "super_admin") {
+    admSection = "menu"; return viewAdmin();
   }
   const fn = map[admSection];
   if (!fn) { admSection = "menu"; return viewAdmin(); }
@@ -2514,7 +2528,7 @@ async function downloadAuth(url) {
 }
 
 async function admSecSurvey() {
-  const isHr = store.role === "hr";
+  const isHr = isAdminRole();
   $("#app").innerHTML = shell(`
     ${admBackHead("admSurvey")}
     <div class="sec"><div id="svBody"><div class="empty">${t("daysLoad")}</div></div></div>`);
@@ -3047,7 +3061,7 @@ async function admSecAccounts() {
       <div id="accList" style="margin-top:10px"></div>
     </div>`);
   bindShell(); admBindBack();
-  const roleTag = (r) => r === "hr" ? "HR" : r === "director" ? "Rahbar" : "";
+  const roleTag = (r) => r === "hr" ? "HR" : r === "director" ? "Rahbar" : r === "super_admin" ? "Super Admin" : "";
   const draw = () => {
     const q = ($("#accQ").value || "").trim().toLowerCase();
     const rows = _accCache.filter(a =>
@@ -3212,6 +3226,55 @@ async function admSecMonitor() {
       admToast(t("admNvrRefreshFail"), false);
       msg.textContent = (r && r.error) || t("admNvrRefreshFail");
     }
+  };
+}
+
+// ─── Kirish/chiqishni qo'lda tuzatish (faqat super_admin) ───
+async function admSecAttendanceEdit() {
+  $("#app").innerHTML = shell(`
+    ${admBackHead("admAttEdit")}
+    <div class="sec">
+      <p class="adm-hint">${t("admAttEditHint")}</p>
+      ${admEmpPickerHtml("aeCard")}
+      <input type="date" class="adm-inp" id="aeDate" value="${todayISO()}" style="margin-top:8px">
+      <div id="aeInfo" class="adm-sub"></div>
+      <div class="adm-2col" style="margin-top:8px">
+        <label>${t("admAttIn")}<input type="time" class="adm-inp" id="aeIn"></label>
+        <label>${t("admAttOut")}<input type="time" class="adm-inp" id="aeOut"></label>
+      </div>
+      <button class="btn adm-primary" id="aeSave" style="margin-top:10px">${t("admSave")}</button>
+      <button class="btn" id="aeClear" style="margin-top:8px">${t("admAttClear")}</button>
+    </div>`);
+  bindShell(); admBindBack();
+
+  const load = async () => {
+    const card = admPickedCard("aeCard");
+    const date = $("#aeDate").value;
+    if (!card || !date) { $("#aeInfo").textContent = ""; return; }
+    const { status, data } = await api(`/api/mobile/admin/attendance_edit?card=${encodeURIComponent(card)}&date=${encodeURIComponent(date)}`);
+    if (status !== 200 || !data) { $("#aeInfo").textContent = ""; return; }
+    $("#aeInfo").innerHTML = `<b>${esc(data.full_name)}</b> — ${t("admAttActual")}: ${esc(data.actual_in || "—")} / ${esc(data.actual_out || "—")}`;
+    $("#aeIn").value = data.override_in || "";
+    $("#aeOut").value = data.override_out || "";
+  };
+  $("#aeCard").onchange = load;
+  $("#aeDate").onchange = load;
+
+  $("#aeSave").onclick = async () => {
+    const card = admPickedCard("aeCard");
+    if (!card) return admToast(t("admPickEmp"), false);
+    const body = { card, date: $("#aeDate").value, in: $("#aeIn").value, out: $("#aeOut").value };
+    const { status, data } = await api("/api/mobile/admin/attendance_edit", { method: "POST", body });
+    if (status === 200) { admToast(t("admDone")); load(); }
+    else admToast((data && data.error) || t("admFail"), false);
+  };
+  $("#aeClear").onclick = async () => {
+    const card = admPickedCard("aeCard");
+    if (!card) return admToast(t("admPickEmp"), false);
+    const body = { card, date: $("#aeDate").value, in: "", out: "" };
+    const { status, data } = await api("/api/mobile/admin/attendance_edit", { method: "POST", body });
+    if (status === 200) { admToast(t("admDone")); load(); }
+    else admToast((data && data.error) || t("admFail"), false);
   };
 }
 

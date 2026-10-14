@@ -187,10 +187,11 @@ def get_events(card, start_date, end_date):
     return _apply_entry_overrides(card, start_date, end_date, _dedup_events(events))
 
 
-# ── HR qarori bilan kirish vaqtini tuzatish ──────────────────────
+# ── super_admin qarori bilan kirish/chiqish vaqtini tuzatish ─────
 # entry_overrides.json:
-#   {"2026-10-09": {"<JSHSHIR>": {"in": "09:01", "izoh": "..."}}}
-# Shu kuni xodimning BIRINCHI kirishi ko'rsatilgan vaqt deb olinadi.
+#   {"2026-10-09": {"<JSHSHIR>": {"in": "09:01", "out": "18:30", "izoh": "..."}}}
+# "in" — shu kuni BIRINCHI kirish, "out" — shu kuni OXIRGI chiqish deb
+# olinadi (ikkalasi ham ixtiyoriy — faqat birini tuzatish ham mumkin).
 # Hamma joyda bir xil ishlaydi: jonli dashboard, oylik hisobot, reyting,
 # KPI, xodimning ilovadagi kunlari — chunki hammasi shu funksiyadan o'qiydi.
 from pathlib import Path as _Path
@@ -214,12 +215,19 @@ def _entry_overrides():
             if not isinstance(cards, dict):
                 continue
             for c, v in cards.items():
-                hm = (v or {}).get("in") if isinstance(v, dict) else v
-                try:
-                    t = datetime.strptime(str(hm).strip()[:5], "%H:%M").time()
-                except Exception:
+                if not isinstance(v, dict):
                     continue
-                data.setdefault(_fmt_card(c).lstrip("0"), {})[str(day)[:10]] = t
+                times = {}
+                for key in ("in", "out"):
+                    hm = v.get(key)
+                    if not hm:
+                        continue
+                    try:
+                        times[key] = datetime.strptime(str(hm).strip()[:5], "%H:%M").time()
+                    except Exception:
+                        continue
+                if times:
+                    data.setdefault(_fmt_card(c).lstrip("0"), {})[str(day)[:10]] = times
         _OVR_CACHE.update(mtime=mt, data=data)
     return _OVR_CACHE["data"]
 
@@ -230,20 +238,38 @@ def _apply_entry_overrides(card, start_date, end_date, events):
         return events
     a, b = str(start_date)[:10], str(end_date)[:10]
     changed = False
-    for day, t in ovr.items():
+    for day, times in ovr.items():
         if not (a <= day <= b):
             continue
-        new_dt = datetime.strptime(day, "%Y-%m-%d").replace(hour=t.hour, minute=t.minute)
-        first = next((e for e in events if e["dt"].strftime("%Y-%m-%d") == day
-                      and e["type"] == LABEL_ENTER), None)
-        if first is not None:
-            first["dt"] = new_dt
-            first["override"] = True
-        else:
-            # O'sha kuni kirish yozuvi yo'q — HR qarori bilan kirish qo'shiladi
-            events.append({"dt": new_dt, "type": LABEL_ENTER, "raw_type": TYPE_ENTER,
-                           "override": True})
-        changed = True
+        if "in" in times:
+            t = times["in"]
+            new_dt = datetime.strptime(day, "%Y-%m-%d").replace(hour=t.hour, minute=t.minute)
+            first = next((e for e in events if e["dt"].strftime("%Y-%m-%d") == day
+                          and e["type"] == LABEL_ENTER), None)
+            if first is not None:
+                first["dt"] = new_dt
+                first["override"] = True
+            else:
+                # O'sha kuni kirish yozuvi yo'q — qo'lda kirish qo'shiladi
+                events.append({"dt": new_dt, "type": LABEL_ENTER, "raw_type": TYPE_ENTER,
+                               "override": True})
+            changed = True
+        if "out" in times:
+            t = times["out"]
+            new_dt = datetime.strptime(day, "%Y-%m-%d").replace(hour=t.hour, minute=t.minute)
+            # o'sha kundagi OXIRGI chiqish hodisasini topamiz
+            last = None
+            for e in events:
+                if e["dt"].strftime("%Y-%m-%d") == day and e["type"] == LABEL_EXIT:
+                    last = e
+            if last is not None:
+                last["dt"] = new_dt
+                last["override"] = True
+            else:
+                # O'sha kuni chiqish yozuvi yo'q — qo'lda chiqish qo'shiladi
+                events.append({"dt": new_dt, "type": LABEL_EXIT, "raw_type": TYPE_EXIT,
+                               "override": True})
+            changed = True
     if changed:
         events.sort(key=lambda x: x["dt"])
     return events

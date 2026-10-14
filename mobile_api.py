@@ -304,8 +304,9 @@ def _role_of(acc):
 
 
 def _can_view_all(login_id, acc):
-    """Hammani kim ko'ra oladi: HR, direktor va 'rahbar' turkumi (o'rinbosarlar)."""
-    if _role_of(acc) in ("hr", "director"):
+    """Hammani kim ko'ra oladi: HR, direktor, super_admin va 'rahbar' turkumi
+    (o'rinbosarlar)."""
+    if _role_of(acc) in ("hr", "director", "super_admin"):
         return True
     if roles is not None:
         try:

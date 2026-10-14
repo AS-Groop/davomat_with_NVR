@@ -51,6 +51,7 @@ LATE_EXCUSED_FILE = BASE_DIR / "late_excused.json"
 HOLIDAYS_FILE = BASE_DIR / "holidays.json"
 HIDDEN_FILE = BASE_DIR / "dashboard_hidden.json"
 WORK_OVERRIDES_FILE = BASE_DIR / "work_overrides.json"
+ENTRY_OVERRIDES_FILE = BASE_DIR / "entry_overrides.json"
 EXPLANATIONS_FILE = BASE_DIR / "explanations.json"
 MONITOR_STATE_FILE = BASE_DIR / "monitor_state.json"
 CACHE_FILE = BASE_DIR / "live_cache.json"
@@ -121,14 +122,28 @@ json_err = None
 
 
 def _auth_hr(request, allow_director=False):
-    """(login, acc) yoki (None, javob). Faqat HR (ixtiyoriy: +director)."""
+    """(login, acc) yoki (None, javob). Faqat HR (ixtiyoriy: +director).
+    super_admin — HR'ning barcha huquqlariga ega, shu sabab hamma joyda ham
+    ruxsat beriladi."""
     login_id, acc = _require_login(request)
     if not login_id:
         return None, json_err("Avtorizatsiya kerak", status=401)
     role = _role_of(acc)
-    allowed = {"hr", "director"} if allow_director else {"hr"}
+    allowed = {"hr", "director", "super_admin"} if allow_director else {"hr", "super_admin"}
     if role not in allowed:
         return None, json_err("Ruxsat yo'q (faqat HR)", status=403)
+    return (login_id, acc), None
+
+
+def _auth_super_admin(request):
+    """(login, acc) yoki (None, javob). Faqat super_admin — xodimlarning
+    kirish/chiqish vaqtini qo'lda tuzatish kabi eng yuqori darajadagi
+    amallar uchun."""
+    login_id, acc = _require_login(request)
+    if not login_id:
+        return None, json_err("Avtorizatsiya kerak", status=401)
+    if _role_of(acc) != "super_admin":
+        return None, json_err("Ruxsat yo'q (faqat super_admin)", status=403)
     return (login_id, acc), None
 
 
@@ -479,6 +494,77 @@ async def worktime_set(request):
     data[card] = t
     _save(WORK_OVERRIDES_FILE, data)
     return json_ok({"ok": True, "time": t})
+
+
+# ─────────────────────────── KIRISH/CHIQISH TUZATISH (faqat super_admin) ───────────────────────────
+
+async def attendance_edit_get(request):
+    """Bitta xodim + bitta sana uchun hozirgi (haqiqiy) va tuzatilgan
+    kirish/chiqish vaqtlarini qaytaradi — forma to'ldirish uchun."""
+    auth, err = _auth_super_admin(request)
+    if err:
+        return err
+    card = str(request.rel_url.query.get("card", "")).strip()
+    date = str(request.rel_url.query.get("date", "")).strip()
+    if not card or not DATE_RE.match(date):
+        return json_err("card va date (YYYY-MM-DD) kerak")
+    data = _load(ENTRY_OVERRIDES_FILE, {})
+    cur = ((data.get(date) or {}).get(card) or {})
+    actual_in, actual_out = "", ""
+    try:
+        import biocontrol_api as _bio
+        evs = _bio.get_events(card, date, date)
+        actual_in = next((e["dt"].strftime("%H:%M") for e in evs
+                          if e["type"] == _bio.LABEL_ENTER), "")
+        actual_out = next((e["dt"].strftime("%H:%M") for e in reversed(evs)
+                           if e["type"] == _bio.LABEL_EXIT), "")
+    except Exception as e:
+        print(f"[ATTENDANCE_EDIT] {e}")
+    return json_ok({
+        "full_name": _name_for_card(card),
+        "override_in": cur.get("in", ""), "override_out": cur.get("out", ""),
+        "actual_in": actual_in, "actual_out": actual_out,
+    })
+
+
+async def attendance_edit_set(request):
+    """Xodimning bitta kundagi kirish/chiqish vaqtini tuzatadi (super_admin).
+    in/out bo'sh yuborilsa — o'sha maydon bo'yicha tuzatish o'chiriladi."""
+    auth, err = _auth_super_admin(request)
+    if err:
+        return err
+    login_id, _ = auth
+    try:
+        body = await request.json()
+    except Exception:
+        return json_err("JSON kutilgan")
+    card = str(body.get("card", "")).strip()
+    date = str(body.get("date", "")).strip()
+    tin = str(body.get("in", "")).strip()
+    tout = str(body.get("out", "")).strip()
+    if not card or not DATE_RE.match(date):
+        return json_err("card va date (YYYY-MM-DD) kerak")
+    if tin and not TIME_RE.match(tin):
+        return json_err("Kirish vaqti formati: HH:MM")
+    if tout and not TIME_RE.match(tout):
+        return json_err("Chiqish vaqti formati: HH:MM")
+
+    data = _load(ENTRY_OVERRIDES_FILE, {})
+    day = data.setdefault(date, {})
+    if not tin and not tout:
+        day.pop(card, None)
+        if not day:
+            data.pop(date, None)
+    else:
+        entry = {}
+        if tin:
+            entry["in"] = tin
+        if tout:
+            entry["out"] = tout
+        entry["izoh"] = f"{login_id} tomonidan qo'lda tuzatildi ({_now_str()})"
+        day[card] = entry
+    _save(ENTRY_OVERRIDES_FILE, data)
+    return json_ok({"ok": True})
 
 
 # ─────────────────────────── XABAR YUBORISH ───────────────────────────
@@ -1551,6 +1637,8 @@ def register(app, require_login, role_of, ok, errf):
     app.router.add_post(f"{p}/hidden/toggle", hidden_toggle)
     app.router.add_get(f"{p}/worktime", worktime_list)
     app.router.add_post(f"{p}/worktime/set", worktime_set)
+    app.router.add_get(f"{p}/attendance_edit", attendance_edit_get)
+    app.router.add_post(f"{p}/attendance_edit", attendance_edit_set)
     # Xabar yuborish (Telegram bot davridan qolgan) — o'chirilgan
     # app.router.add_post(f"{p}/broadcast", broadcast)
     app.router.add_get(f"{p}/announce/list", announce_list)
