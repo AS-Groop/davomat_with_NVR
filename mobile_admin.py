@@ -496,6 +496,42 @@ async def worktime_set(request):
     return json_ok({"ok": True, "time": t})
 
 
+# ─────────────────────────── HISOBOTLAR (Excel, HR + super_admin) ───────────────────────────
+
+async def report_rating_xlsx(request):
+    """Oylik reyting (ish soati) — Excel, barcha xodimlar."""
+    auth, err = _auth_hr(request)
+    if err:
+        return err
+    ym = str(request.rel_url.query.get("month", "")).strip() or datetime.now().strftime("%Y-%m")
+    if not re.match(r"^\d{4}-\d{2}$", ym):
+        return json_err("Oy formati: YYYY-MM")
+    try:
+        import reports_xlsx
+        path = reports_xlsx.build_rating_xlsx(ym)
+    except Exception as e:
+        return json_err(f"Hisobot yaratilmadi: {e}", status=500)
+    return web.FileResponse(path, headers={
+        "Content-Disposition": f'attachment; filename="reyting_{ym}.xlsx"'})
+
+
+async def report_journal_xlsx(request):
+    """Kirish-chiqish jurnali — Excel, barcha xodimlar, kun-kun."""
+    auth, err = _auth_hr(request)
+    if err:
+        return err
+    ym = str(request.rel_url.query.get("month", "")).strip() or datetime.now().strftime("%Y-%m")
+    if not re.match(r"^\d{4}-\d{2}$", ym):
+        return json_err("Oy formati: YYYY-MM")
+    try:
+        import reports_xlsx
+        path = reports_xlsx.build_journal_xlsx(ym)
+    except Exception as e:
+        return json_err(f"Hisobot yaratilmadi: {e}", status=500)
+    return web.FileResponse(path, headers={
+        "Content-Disposition": f'attachment; filename="jurnal_{ym}.xlsx"'})
+
+
 # ─────────────────────────── KIRISH/CHIQISH TUZATISH (faqat super_admin) ───────────────────────────
 
 async def attendance_edit_get(request):
@@ -564,6 +600,16 @@ async def attendance_edit_set(request):
         entry["izoh"] = f"{login_id} tomonidan qo'lda tuzatildi ({_now_str()})"
         day[card] = entry
     _save(ENTRY_OVERRIDES_FILE, data)
+
+    # Tuzatish reytingda/hisobotlarda DARHOL ko'rinishi uchun — o'sha oyning
+    # monthly_report.json (joriy oy) / monthly_reports/{ym}.json (arxiv)
+    # keshini shu zahoti qayta quramiz (aks holda ertalabgacha yangilanmasdi).
+    try:
+        import analyze_biocontrol_api as analyze
+        analyze.build_monthly_report(ym=date[:7], quiet=True)
+    except Exception as e:
+        print(f"[ATTENDANCE_EDIT] oylik hisobotni qayta qurishda xato: {e}")
+
     return json_ok({"ok": True})
 
 
@@ -1639,6 +1685,8 @@ def register(app, require_login, role_of, ok, errf):
     app.router.add_post(f"{p}/worktime/set", worktime_set)
     app.router.add_get(f"{p}/attendance_edit", attendance_edit_get)
     app.router.add_post(f"{p}/attendance_edit", attendance_edit_set)
+    app.router.add_get(f"{p}/report_rating", report_rating_xlsx)
+    app.router.add_get(f"{p}/report_journal", report_journal_xlsx)
     # Xabar yuborish (Telegram bot davridan qolgan) — o'chirilgan
     # app.router.add_post(f"{p}/broadcast", broadcast)
     app.router.add_get(f"{p}/announce/list", announce_list)

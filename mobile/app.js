@@ -152,6 +152,10 @@ const T = {
     admAttEditHint: "Xodim va sanani tanlang — kerakli kirish/chiqish vaqtini kiriting. Bo'sh qoldirsangiz, o'sha maydon bo'yicha tuzatish o'chiriladi.",
     admAttIn: "Kirish", admAttOut: "Chiqish", admAttActual: "Haqiqiy",
     admAttClear: "Tuzatishni o'chirish",
+    admReports: "Hisobotlarni yuklab olish",
+    admReportsHint: "Oyni tanlang va kerakli hisobotni Excel faylda yuklab oling.",
+    admReportRating: "Reyting (ish soatlari) — Excel",
+    admReportJournal: "Kirish-chiqish jurnali — Excel",
     admExcused: "✅ Uzrli", admNotExcused: "Uzrli deb belgilash", admToggleHide: "Yashirish", admToggleShow: "Ko'rsatish",
     admReasonHint: "Bugungi kun uchun qisqa izoh (dashboardda ko'rinadi). Bo'sh saqlansa — o'chiriladi.",
     admWtHint: "Xodim uchun maxsus ish boshlanish vaqti (masalan 13:00). Bo'sh saqlansa — o'chiriladi.",
@@ -323,6 +327,10 @@ const T = {
     admAttEditHint: "Выберите сотрудника и дату — введите нужное время прихода/ухода. Если поле пустое, исправление по нему удаляется.",
     admAttIn: "Приход", admAttOut: "Уход", admAttActual: "Фактически",
     admAttClear: "Удалить исправление",
+    admReports: "Скачать отчёты",
+    admReportsHint: "Выберите месяц и скачайте нужный отчёт в формате Excel.",
+    admReportRating: "Рейтинг (часы работы) — Excel",
+    admReportJournal: "Журнал прихода/ухода — Excel",
     admExcused: "✅ Уважит.", admNotExcused: "Отметить уважительным", admToggleHide: "Скрыть", admToggleShow: "Показать",
     admReasonHint: "Короткое примечание на сегодня (видно на дашборде). Пустое — удаляет.",
     admWtHint: "Особое время начала работы (напр. 13:00). Пустое — удаляет.",
@@ -1765,6 +1773,7 @@ const ADM_TILES = [
   { id: "expl", ico: "📋", key: "admExpl" },
   { id: "monitor", ico: "📡", key: "admMonitor" },
   { id: "attedit", ico: "🛠", key: "admAttEdit", superOnly: true },
+  { id: "reports", ico: "📥", key: "admReports" },
 ];
 
 async function viewAdmin() {
@@ -1823,6 +1832,7 @@ async function admRenderSection() {
     hidden: admSecHidden, worktime: admSecWorktime, photo: admSecPhoto, olim: admSecOlim,
     interns: admSecInterns, exit: admSecExitReasons, resetpw: admSecResetPw, newacc: admSecNewAcc, accounts: admSecAccounts, empadd: admSecEmpAdd, empout: admSecEmpOut, latelist: admSecLateList, reyting: admSecRating, survey: admSecSurvey, yoqlama: admSecYoqlama,
     expl: admSecExpl, monitor: admSecMonitor, attedit: admSecAttendanceEdit,
+    reports: admSecReports,
   };
   // Rahbariyat faqat ko'rish bo'limlarini ocha oladi
   if (!isAdminRole()) {
@@ -3276,6 +3286,26 @@ async function admSecAttendanceEdit() {
     if (status === 200) { admToast(t("admDone")); load(); }
     else admToast((data && data.error) || t("admFail"), false);
   };
+}
+
+// ─── Hisobotlarni yuklab olish (HR + super_admin, Excel) ───
+async function admSecReports() {
+  const ym = ymList(1)[0];
+  const opts = ymList(12).map(m =>
+    `<option value="${m}"${m === ym ? " selected" : ""}>${ymLabel(m)}</option>`).join("");
+  $("#app").innerHTML = shell(`
+    ${admBackHead("admReports")}
+    <div class="sec">
+      <p class="adm-hint">${t("admReportsHint")}</p>
+      <select class="adm-inp" id="repMonth">${opts}</select>
+      <button class="btn adm-primary" id="repRating" style="margin-top:10px">⬇ ${t("admReportRating")}</button>
+      <button class="btn" id="repJournal" style="margin-top:8px">⬇ ${t("admReportJournal")}</button>
+    </div>`);
+  bindShell(); admBindBack();
+  $("#repRating").onclick = () => downloadAuth(
+    "/api/mobile/admin/report_rating?month=" + encodeURIComponent($("#repMonth").value));
+  $("#repJournal").onclick = () => downloadAuth(
+    "/api/mobile/admin/report_journal?month=" + encodeURIComponent($("#repMonth").value));
 }
 
 // ─── Rasm yuklash (xodim rasmini HR yuklaydi) ───

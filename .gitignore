@@ -33,6 +33,7 @@
 /monthly_report.json
 /monthly_reports/
 /nvr_reports/
+/exports/
 
 # ── Qurilma tarmoq sozlamalari (ichki IP/parol havolalari) ──
 /faceid_devices.json
