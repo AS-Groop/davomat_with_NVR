@@ -379,11 +379,30 @@ _LOGIN_WINDOW = 300        # 5 daqiqa ichida
 _LOGIN_BLOCK = 900         # 15 daqiqa bloklash
 
 
+_TRUSTED_PROXY_IPS = ("127.0.0.1", "::1")
+
+
 def _client_ip(request):
+    """Haqiqiy mijoz IP'si.
+
+    XAVFSIZLIK: X-Real-IP/X-Forwarded-For sarlavhalariga FAQAT so'rov
+    to'g'ridan-to'g'ri shu serverdagi ishonchli proksidan (nginx,
+    127.0.0.1) kelganda ishonamiz. Aks holda (masalan kimdir backend
+    portiga — 8090 — to'g'ridan-to'g'ri ulansa) bu sarlavhalar mijozning
+    o'zi tomonidan soxtalashtirilgan bo'lishi mumkin — X-Forwarded-For'ni
+    proksi faqat QO'SHADI (almashtirmaydi), shu sabab uning birinchi
+    qiymatiga ko'r-ko'rona ishonib bo'lmaydi.
+    """
+    remote = str(request.remote or "")
+    if remote not in _TRUSTED_PROXY_IPS:
+        return remote or "?"
+    xri = request.headers.get("X-Real-IP", "").strip()
+    if xri:
+        return xri
     xff = request.headers.get("X-Forwarded-For", "")
     if xff:
         return xff.split(",")[0].strip()
-    return request.remote or "?"
+    return remote or "?"
 
 
 def _login_blocked(key):
@@ -398,20 +417,23 @@ def _login_fail(key):
     _LOGIN_FAILS.setdefault(key, []).append(time.time())
 
 
-def _is_external(request) -> bool:
-    """So'rov internet orqali (Cloudflare tunnel) keldimi?
+def _is_internal_ip(ip: str) -> bool:
+    return ip == "::1" or ip.startswith(("127.", "10.", "192.168.", "172.16.", "172.17.",
+                                          "172.18.", "172.19.", "172.2", "172.30.", "172.31."))
 
-    Mahalliy tarmoqdan kelgan so'rovda bu sarlavhalar bo'lmaydi.
+
+def _is_external(request) -> bool:
+    """So'rov internet orqali (nginx/davomat.uz yoki Cloudflare tunnel) keldimi?
+
+    `_client_ip()` orqali HAQIQIY mijoz IP'sini oladi (ishonchli proksi —
+    127.0.0.1'dagi nginx — orqali kelgan bo'lsagina X-Real-IP/
+    X-Forwarded-For'ga ishonadi, aks holda soxtalashtirish xavfi bor).
+    Agar haqiqiy IP ichki tarmoqniki bo'lsa — tashqi emas.
     """
     if request.headers.get("CF-Connecting-IP") or request.headers.get("CF-Ray"):
         return True
-    if request.headers.get("X-Forwarded-For"):
-        return True
-    ip = str(request.remote or "")
-    if ip.startswith(("127.", "10.", "192.168.", "172.16.", "172.17.",
-                      "172.18.", "172.19.", "172.2", "172.30.", "172.31.")):
-        return False
-    return bool(ip) and ip != "::1"
+    ip = str(_client_ip(request) or "")
+    return not _is_internal_ip(ip)
 
 
 async def login(request):
