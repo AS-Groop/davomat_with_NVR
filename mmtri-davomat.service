@@ -1,0 +1,20 @@
+[Unit]
+Description=MMTRI Davomat tizimi (mobil ilova + dashboard + jonli worker)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# ⚠️ Quyidagi ikki yo'lni (User, WorkingDirectory) o'z serveringizga moslang.
+# LINUX_DEPLOY.md dagi 5-qadamga qarang.
+User=mmtri
+WorkingDirectory=/opt/mmtri_davomat
+ExecStart=/opt/mmtri_davomat/venv/bin/python start_all.py
+Restart=always
+RestartSec=5
+# Terminalsiz ishlaganda ham o'zbekcha matnlar to'g'ri chiqishi uchun:
+Environment=PYTHONUTF8=1
+Environment=PYTHONIOENCODING=utf-8
+
+[Install]
+WantedBy=multi-user.target
