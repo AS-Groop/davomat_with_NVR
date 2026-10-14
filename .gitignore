@@ -1,0 +1,47 @@
+# ══════════ MMTRI Davomat tizimi — .gitignore ══════════
+# Bu loyiha JSHSHIR, xodim rasmlari va parollarni qayta ishlaydi.
+# Quyidagilar GitHub'ga HECH QACHON ketmasligi kerak.
+# (Boshida "/" — faqat ildiz papkadagi faylga tegishli, masalan
+# demo/users.xlsx kabi namunaviy fayllarga tegmasin uchun.)
+
+# ── Maxfiy (parollar, tokenlar) ──
+/.env
+/tokens.json
+/new_accounts.txt
+
+# ── Shaxsga doir ma'lumotlar (xodimlar, davomat) ──
+/users.xlsx
+/users_backup_*.xlsx
+/accounts.json
+/employee_departments.json
+/exemptions.json
+/explanation_requests.json
+/explanations*.json
+/late_excused.json
+/late_grace_days.json
+/entry_overrides.json
+/work_overrides.json
+/interns_auto.json
+/interns_roster.json
+/photo_overrides.json
+/dashboard_hidden.json
+/monitor_state.json
+/photos/
+
+# ── Jonli / avtomatik generatsiya qilinadigan ma'lumot ──
+/live_cache.json
+/monthly_report.json
+/monthly_reports/
+/nvr_reports/
+
+# ── Qurilma tarmoq sozlamalari (ichki IP/parol havolalari) ──
+/faceid_devices.json
+
+# ── Python ──
+__pycache__/
+*.pyc
+*.pyo
+
+# ── Tizim fayllari ──
+.DS_Store
+Thumbs.db
