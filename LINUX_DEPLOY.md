@@ -113,14 +113,42 @@ Endi server qayta yonsa ham, dastur yiqilib qolsa ham (`Restart=always`)
 tizim o'zi qayta ishga tushadi — Windows'dagi "oynani yopmang" degan
 cheklov endi yo'q.
 
-## 8. Portlarni ochish (agar firewall yoqilgan bo'lsa)
+## 8. nginx + domen (`davomat.uz`, lokal tarmoq)
+
+DNS allaqachon tayyor bo'lsa (sysadmin "davomat.uz" shu serverga kelishini
+tasdiqlagan), faqat nginx'ni ulash qoladi. Loyiha ichida tayyor
+**`nginx/davomat.conf`** bor:
+- `http://davomat.uz` (80-port) → mobil ilova (8090)
+- `http://davomat.uz:8080` → dashboard (katta ekran)
+
+Dashboard `.env`da `DASHBOARD_BIND=127.0.0.1` bilan ishlaydi (xavfsizlik
+uchun faqat shu serverning o'zidan ko'rinadi) — shu sabab tashqaridan
+ko'rinishi uchun nginx orqali o'tishi **shart**.
 
 ```bash
-sudo ufw allow 8090/tcp
+sudo apt install -y nginx
+sudo cp nginx/davomat.conf /etc/nginx/sites-available/davomat.conf
+sudo ln -s /etc/nginx/sites-available/davomat.conf /etc/nginx/sites-enabled/
+sudo nginx -t              # sintaksis xato yo'qligini tekshiradi
+sudo systemctl reload nginx
+```
+
+Tekshirish:
+```bash
+curl -I http://davomat.uz
+curl -I http://davomat.uz:8080
+```
+
+## 9. Portlarni ochish (agar firewall yoqilgan bo'lsa)
+
+nginx orqali kirilsa — 80 va 8080 yetarli (8090'ni tashqariga ochish shart
+emas, nginx uni ichkarida, 127.0.0.1 orqali chaqiradi):
+```bash
+sudo ufw allow 80/tcp
 sudo ufw allow 8080/tcp
 ```
 
-## 9. Internetdan kirish (ixtiyoriy)
+## 10. Internetdan kirish (ixtiyoriy)
 
 `start_tunnel.bat` o'rniga Linux uchun cloudflared:
 ```bash
@@ -132,7 +160,7 @@ chmod +x cloudflared
 Doimiy bo'lishi uchun buni ham systemd xizmatiga aylantirish mumkin
 (so'rasangiz tayyorlab beraman).
 
-## 10. Kundalik yangilash (kod o'zgarganda)
+## 11. Kundalik yangilash (kod o'zgarganda)
 
 ```bash
 cd /opt/mmtri_davomat
@@ -141,7 +169,7 @@ venv/bin/pip install -r requirements.txt   # kutubxona qo'shilgan bo'lsa
 sudo systemctl restart mmtri-davomat
 ```
 
-## 11. Zaxira nusxa — serverda ham unutmang
+## 12. Zaxira nusxa — serverda ham unutmang
 
 Ma'lumotlar (`users.xlsx`, `accounts.json`, `nvr_reports/`,
 `monthly_reports/`, `.env`) endi Linux serverda — ularni muntazam
