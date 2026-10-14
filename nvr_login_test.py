@@ -14,6 +14,8 @@ o'zgartirmaydi, faqat login urinadi.
 Sozlamalar (IP, login, parol) kodda EMAS — .env dan o'qiladi
 (NVR_HOST, NVR_USER, NVR_PASSWORD), xuddi nvr_live.py dagidek.
 """
+from __future__ import annotations
+
 import hashlib
 import os
 import re
@@ -31,12 +33,13 @@ USER = os.getenv("NVR_USER", "admin")
 PASSWORD = os.getenv("NVR_PASSWORD", "")
 
 
-def http_post(path: str, body: bytes) -> tuple[int, dict, str]:
+def http_post(path: str, body: bytes, cookie: str | None = None) -> tuple[int, dict, str]:
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
     s.settimeout(10)
     s.connect((IP, PORT))
     local_addr = s.getsockname()
+    cookie_line = f"Cookie: {cookie}\r\n" if cookie else ""
     req = (
         f"POST {path} HTTP/1.1\r\n"
         f"Host: {IP}\r\n"
@@ -49,6 +52,7 @@ def http_post(path: str, body: bytes) -> tuple[int, dict, str]:
         f"Content-Type: application/x-www-form-urlencoded; charset=UTF-8\r\n"
         f"Origin: http://{IP}\r\n"
         f"Referer: http://{IP}/\r\n"
+        f"{cookie_line}"
         f"Accept-Encoding: identity\r\n"
         f"Accept-Language: ru,en-US;q=0.9,en;q=0.8,uz;q=0.7\r\n"
         f"\r\n"
@@ -89,12 +93,15 @@ def main():
 
     nonce_m = re.search(r"<nonce>(.*?)</nonce>", resp1)
     token_m = re.search(r"<token>(.*?)</token>", resp1)
-    if not nonce_m or not token_m:
-        print("XATO: reqLogin javobida nonce/token topilmadi. To'xtatildi.")
+    sid_m = re.search(r"<sessionId>(.*?)</sessionId>", resp1)
+    if not nonce_m or not token_m or not sid_m:
+        print("XATO: reqLogin javobida nonce/token/sessionId topilmadi. To'xtatildi.")
         return
     nonce, token = nonce_m.group(1), token_m.group(1)
+    sid = sid_m.group(1).strip("{}")
     print(f"   nonce = {nonce}")
-    print(f"   token = {token}\n")
+    print(f"   token = {token}")
+    print(f"   sessionId = {sid}\n")
 
     md5_pw = hashlib.md5(PASSWORD.encode("utf-8")).hexdigest().upper()
     sha1_final = hashlib.sha1((md5_pw + nonce).encode("utf-8")).hexdigest().upper()
@@ -109,8 +116,8 @@ def main():
         f"<content><userName><![CDATA[{USER}]]></userName>"
         f"<password><![CDATA[{sha1_final}]]></password></content></request>"
     )
-    print("3) /doLogin yuborilmoqda...")
-    status, _, resp2 = http_post("/doLogin", req2.encode("utf-8"))
+    print("3) /doLogin yuborilmoqda (Cookie: sessionId=... bilan)...")
+    status, _, resp2 = http_post("/doLogin", req2.encode("utf-8"), cookie=f"sessionId={sid}")
     print(f"   HTTP status: {status}")
     print(f"   Javob:\n{resp2}\n")
 
