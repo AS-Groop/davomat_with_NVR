@@ -1454,6 +1454,10 @@ async def explain_request(request):
         return json_err("card kerak")
     if kind not in ("late", "absent"):
         return json_err("kind late yoki absent bo'lsin")
+    # super_admin'dan tushuntirish so'ralmaydi — tugma bosilsa ham hech narsa sodir bo'lmaydi
+    target_acc = accounts.get_account(card)
+    if target_acc and (target_acc.get("role") or "").lower() == "super_admin":
+        return json_ok({"ok": True})
     date = str(body.get("date", "")).strip() or datetime.now().strftime("%Y-%m-%d")
     rid = _req_id(card, date, kind)
     data = _load_requests()
