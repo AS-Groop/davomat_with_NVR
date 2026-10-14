@@ -609,8 +609,13 @@ function bindShell() {
   $("#rf").onclick = async () => {
     const b = $("#rf");
     b.disabled = true;
-    try { await api("/api/mobile/refresh_nvr", { method: "POST" }); } catch (e) {}
+    const { status, data } = await api("/api/mobile/refresh_nvr", { method: "POST" });
     b.disabled = false;
+    if (status === 200 && data && data.ok) {
+      admToast(`${t("admNvrRefreshOk")} · ${data.employees}/${data.total_queried}`);
+    } else {
+      admToast((data && data.error) || t("admNvrRefreshFail"), false);
+    }
     render();
   };
   const pb = $("#pwbtn"); if (pb) pb.onclick = changePwModal;
