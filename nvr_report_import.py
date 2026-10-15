@@ -157,3 +157,72 @@ def events_for_workno(work_no, start_date: str, end_date: str) -> list[dict]:
 
 def ping() -> bool:
     return bool(_report_files())
+
+
+# ─────────────────────────── XODIM PROFILI (solishtirish uchun) ───────────────────────────
+# NVR eksporti (.xls) faqat punch vaqtlari emas, balki xodim profilini ham
+# o'z ichiga oladi: [2] Имя, [4] Департамент, [5] Должность, [6] номер
+# телефона, [7] День рождения. Bu — users.xlsx'dagi yangi/tahrirlanayotgan
+# xodim ma'lumotini NVR bilan solishtirish uchun yagona manba (NVR'ning
+# jonli so'rovi — nvr_live.py — faqat punch vaqtini beradi, profil bermaydi).
+
+_PROFILE_CACHE: dict[str, Any] = {"listing": None, "profiles": {}}
+
+
+def _parse_profiles(path: Path) -> dict[str, dict]:
+    """Bitta eksport faylidan {work_no: {name, department, position, phone,
+    birthday}} qaytaradi (bo'sh/summary qatorlar o'tkazib yuboriladi)."""
+    import pandas as pd
+
+    try:
+        tables = pd.read_html(path, encoding="utf-8")
+    except Exception:
+        return {}
+    if not tables:
+        return {}
+    df = tables[0]
+
+    def clean(v) -> str:
+        s = str(v).strip()
+        return "" if s.lower() == "nan" else s
+
+    out: dict[str, dict] = {}
+    for row in df.itertuples(index=False, name=None):
+        if len(row) < 8:
+            continue
+        work_no = str(row[1]).strip()
+        if not work_no.isdigit():
+            continue  # summary/footer qatori
+        profile = {
+            "name": clean(row[2]),
+            "department": clean(row[4]),
+            "position": clean(row[5]),
+            "phone": clean(row[6]),
+            "birthday": clean(row[7]),
+        }
+        if any(profile.values()):
+            out[work_no] = profile
+    return out
+
+
+def _all_profiles(force: bool = False) -> dict[str, dict]:
+    with _LOCK:
+        listing = {p: p.stat().st_mtime for p in _report_files()}
+        if not force and listing == _PROFILE_CACHE["listing"]:
+            return _PROFILE_CACHE["profiles"]
+        profiles: dict[str, dict] = {}
+        for p in listing:
+            # eng so'nggi (fayl nomi bo'yicha oxirgi) eksport ustun keladi
+            profiles.update(_parse_profiles(p))
+        _PROFILE_CACHE.update(listing=listing, profiles=profiles)
+        return profiles
+
+
+def nvr_profile_for_workno(work_no) -> Optional[dict]:
+    """Berilgan qurilma raqami (users.xlsx "faceid" ustuni) uchun NVR
+    eksportidan topilgan xodim profilini qaytaradi. Bu raqam hech qanday
+    eksportda uchramagan bo'lsa — None."""
+    wn = "".join(ch for ch in str(work_no or "") if ch.isdigit())
+    if not wn:
+        return None
+    return _all_profiles().get(wn)

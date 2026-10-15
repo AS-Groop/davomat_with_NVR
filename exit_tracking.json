@@ -11,10 +11,28 @@
     "last_event": "08:41:00",
     "warned": true
   },
-  "99000000000041": {
-    "exit_time": "2026-10-14 10:59:55",
-    "full_name": "Mirzayeva Zulayho Tuxliyevna",
-    "last_event": "10:47:00",
+  "31702986570011": {
+    "exit_time": "2026-10-15 10:25:23",
+    "full_name": "Abduqahhorov Yorqin Sherali ogl",
+    "last_event": "09:58:00",
+    "warned": true
+  },
+  "31011890430048": {
+    "exit_time": "2026-10-15 10:25:23",
+    "full_name": "Baltayev Furqat Pardabayevich",
+    "last_event": "09:47:00",
+    "warned": true
+  },
+  "32606706610016": {
+    "exit_time": "2026-10-15 10:25:23",
+    "full_name": "Ergashev Botir Ergashevich",
+    "last_event": "09:57:00",
+    "warned": true
+  },
+  "42103863070033": {
+    "exit_time": "2026-10-15 10:25:23",
+    "full_name": "Raximova Guli Sultonboyevna",
+    "last_event": "09:48:00",
     "warned": true
   }
 }

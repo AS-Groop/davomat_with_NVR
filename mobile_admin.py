@@ -26,6 +26,10 @@ Endpointlar (hammasi Bearer token bilan):
   GET  /api/mobile/admin/explanations            ?month=YYYY-MM
   POST /api/mobile/admin/explanations/status     {exp_id, status: reviewed|pending}
   POST /api/mobile/admin/monitor                 {enabled: true/false}
+  POST /api/mobile/admin/employee_add            {familya, ism, sharif?, card, faceid?, bolim?, lavozim?, role?, category?, work_start?, telegram?}
+  GET  /api/mobile/admin/employee_get            ?card=JSHSHIR — tahrirlash uchun joriy ma'lumot
+  POST /api/mobile/admin/employee_update         {card, ...tahrirlanadigan maydonlar}
+  GET  /api/mobile/admin/nvr_lookup              ?faceid=<qurilma raqami> — NVR eksportidagi profil bilan solishtirish
 """
 
 import os
@@ -1005,6 +1009,9 @@ _COL_ALIASES = {
     "ism": ["ism", "firstname", "name"],
     "sharif": ["sharif", "middlename", "otchestvo"],
     "card": ["cardnumber", "card", "kartaraqami", "jshshir", "pinfl"],
+    "faceid": ["faceid", "worknumber", "devicenumber", "qurilmaraqami"],
+    "bolim": ["bolim", "department", "bo'lim"],
+    "lavozim": ["lavozim", "position", "lavozimi"],
     "telegram": ["telegramid", "telegram", "tgid"],
     "role": ["role", "lavozimturi"],
     "photo": ["photofile", "photo", "rasm"],
@@ -1012,6 +1019,48 @@ _COL_ALIASES = {
     "birth": ["tugilgansana", "tugilgan", "birth"],
     "work_start": ["workstart", "ishboshlanishi", "ishvaqti", "starttime", "boshlanish"],
 }
+
+
+def _xlsx_header_and_cols(ws):
+    """users.xlsx ishchi varag'idan (sarlavha_qatori, {kalit: ustun}, serial_ustun)
+    ni aniqlaydi. `_add_employee_row` va `_update_employee_row` bir xil mantiqni
+    ishlatadi — shu sabab shu yerga chiqarilgan."""
+    hdr_row = 1
+    for r in range(1, min(ws.max_row, 6) + 1):
+        vals = [ws.cell(row=r, column=c).value for c in range(1, ws.max_column + 1)]
+        if any(v not in (None, "") for v in vals):
+            hdr_row = r
+            break
+    col_of = {}
+    serial_col = None
+    for c in range(1, ws.max_column + 1):
+        raw = ws.cell(row=hdr_row, column=c).value
+        n = _norm_hdr(raw)
+        if not n:
+            continue
+        matched = False
+        for key, aliases in _COL_ALIASES.items():
+            if n in aliases:
+                col_of[key] = c
+                matched = True
+                break
+        if not matched and serial_col is None and n in ("", "unnamed0", "no", "t", "tr", "raqam"):
+            serial_col = c
+    if serial_col is None and _norm_hdr(ws.cell(row=hdr_row, column=1).value) in ("", "unnamed0"):
+        serial_col = 1
+    return hdr_row, col_of, serial_col
+
+
+def _find_employee_row(ws, hdr_row: int, ccol: int, card: str):
+    """Berilgan JSHSHIR'ga mos qator raqamini topadi (yo'q bo'lsa None)."""
+    for r in range(hdr_row + 1, ws.max_row + 1):
+        v = ws.cell(row=r, column=ccol).value
+        if v is None:
+            continue
+        vd = "".join(ch for ch in str(v) if ch.isdigit())
+        if vd == card:
+            return r
+    return None
 
 
 def _employee_xlsx_path():
@@ -1041,45 +1090,15 @@ def _add_employee_row(fields: dict):
     except Exception as e:
         return False, f"users.xlsx o'qib bo'lmadi: {e}"
     ws = wb.active
-    # sarlavha qatorini topamiz (birinchi to'ldirilgan qator)
-    hdr_row = 1
-    for r in range(1, min(ws.max_row, 6) + 1):
-        vals = [ws.cell(row=r, column=c).value for c in range(1, ws.max_column + 1)]
-        if any(v not in (None, "") for v in vals):
-            hdr_row = r
-            break
-    # ustun nomi -> indeks
-    col_of = {}
-    serial_col = None
-    for c in range(1, ws.max_column + 1):
-        raw = ws.cell(row=hdr_row, column=c).value
-        n = _norm_hdr(raw)
-        if not n:
-            continue
-        matched = False
-        for key, aliases in _COL_ALIASES.items():
-            if n in aliases:
-                col_of[key] = c
-                matched = True
-                break
-        if not matched and serial_col is None and n in ("", "unnamed0", "no", "t", "tr", "raqam"):
-            serial_col = c
-    # 'Unnamed: 0' odatda 1-ustun (tartib raqami)
-    if serial_col is None and _norm_hdr(ws.cell(row=hdr_row, column=1).value) in ("", "unnamed0"):
-        serial_col = 1
+    hdr_row, col_of, serial_col = _xlsx_header_and_cols(ws)
     if "card" not in col_of or "familya" not in col_of:
         return False, "users.xlsx ustunlari tanilmadi (Familya/card number)"
 
     # dublikat tekshiruvi
     card = fields["card"]
     ccol = col_of["card"]
-    for r in range(hdr_row + 1, ws.max_row + 1):
-        v = ws.cell(row=r, column=ccol).value
-        if v is None:
-            continue
-        vd = "".join(ch for ch in str(v) if ch.isdigit())
-        if vd == card:
-            return False, "Bu JSHSHIR allaqachon ro'yxatda bor"
+    if _find_employee_row(ws, hdr_row, ccol, card) is not None:
+        return False, "Bu JSHSHIR allaqachon ro'yxatda bor"
 
     # yangi qator raqami — birinchi bo'sh qator
     new_row = hdr_row + 1
@@ -1098,6 +1117,12 @@ def _add_employee_row(fields: dict):
     put("role", fields.get("role", "employee"))
     put("category", fields.get("category", "oddiy"))
     put("photo", f"{card}.jpg")
+    if fields.get("faceid"):
+        put("faceid", fields["faceid"])
+    if fields.get("bolim"):
+        put("bolim", fields["bolim"])
+    if fields.get("lavozim"):
+        put("lavozim", fields["lavozim"])
     if fields.get("work_start"):
         put("work_start", fields["work_start"])
     if fields.get("telegram"):
@@ -1125,6 +1150,175 @@ def _add_employee_row(fields: dict):
     return True, "ok"
 
 
+# Edit formasida ko'rsatiladigan/tahrirlanadigan maydonlar.
+_EDITABLE_KEYS = ("familya", "ism", "sharif", "faceid", "bolim", "lavozim",
+                  "work_start", "role", "category", "telegram", "birth")
+
+
+def _read_employee_row(card: str):
+    """Bitta xodimning users.xlsx dagi joriy qiymatlarini o'qiydi (tahrirlash
+    formasini to'ldirish uchun). Topilmasa None qaytaradi."""
+    import openpyxl
+    path = _employee_xlsx_path()
+    if not path.exists():
+        return None
+    try:
+        wb = openpyxl.load_workbook(path, data_only=True)
+    except Exception:
+        return None
+    ws = wb.active
+    hdr_row, col_of, _ = _xlsx_header_and_cols(ws)
+    ccol = col_of.get("card")
+    if not ccol:
+        wb.close()
+        return None
+    row_no = _find_employee_row(ws, hdr_row, ccol, card)
+    if row_no is None:
+        wb.close()
+        return None
+    out = {"card": card}
+    for key in _EDITABLE_KEYS:
+        col = col_of.get(key)
+        val = ws.cell(row=row_no, column=col).value if col else None
+        out[key] = "" if val is None else str(val).strip()
+    wb.close()
+    return out
+
+
+def _update_employee_row(card: str, fields: dict):
+    """users.xlsx dagi mavjud xodim qatorini tahrirlaydi — faqat `fields`да
+    kelgan kalitlarga tegadi, qolganlari o'zgarishsiz qoladi.
+    (ok, xabar/xato) qaytaradi."""
+    import openpyxl
+    path = _employee_xlsx_path()
+    if not path.exists():
+        return False, "users.xlsx topilmadi"
+    try:
+        wb = openpyxl.load_workbook(path)
+    except PermissionError:
+        return False, "users.xlsx Excelда ochiq — yopib qайta urиниng"
+    except Exception as e:
+        return False, f"users.xlsx o'qib bo'lmadi: {e}"
+    ws = wb.active
+    hdr_row, col_of, _ = _xlsx_header_and_cols(ws)
+    ccol = col_of.get("card")
+    if not ccol:
+        return False, "users.xlsx ustunlari tanilmadi (card number)"
+    row_no = _find_employee_row(ws, hdr_row, ccol, card)
+    if row_no is None:
+        return False, "Xodim topilmadi (bu JSHSHIR ro'yxatda yo'q)"
+
+    for key, val in fields.items():
+        col = col_of.get(key)
+        if not col:
+            continue
+        if key == "telegram" and val:
+            try:
+                val = int(val)
+            except Exception:
+                pass
+        ws.cell(row=row_no, column=col).value = (val if val not in (None, "") else None)
+
+    try:
+        wb.save(path)
+    except PermissionError:
+        return False, "users.xlsx Excelда ochiq — yopib qайta urиниng"
+    except Exception as e:
+        return False, f"Saqlashда xato: {e}"
+    return True, "ok"
+
+
+async def employee_get(request):
+    """HR/super_admin: tahrirlash formasi uchun bitta xodimning joriy
+    ma'lumotlarini qaytaradi. ?card=JSHSHIR"""
+    auth, err = _auth_hr(request)
+    if err:
+        return err
+    card = "".join(ch for ch in str(request.rel_url.query.get("card", "")) if ch.isdigit())
+    if not card:
+        return json_err("card kerak")
+    row = _read_employee_row(card)
+    if row is None:
+        return json_err("Xodim topilmadi", status=404)
+    return json_ok({"ok": True, "employee": row})
+
+
+async def employee_update(request):
+    """HR/super_admin: mavjud xodimning ma'lumotlarini tahrirlaydi.
+    {card, familya?, ism?, sharif?, faceid?, bolim?, lavozim?, work_start?,
+     role?, category?, telegram?} — faqat berilgan maydonlar o'zgaradi."""
+    auth, err = _auth_hr(request)
+    if err:
+        return err
+    try:
+        body = await request.json()
+    except Exception:
+        return json_err("JSON kutilgan")
+    card = "".join(ch for ch in str(body.get("card", "")) if ch.isdigit())
+    if not card:
+        return json_err("card kerak")
+
+    fields = {}
+    for key in ("familya", "ism", "sharif", "faceid", "bolim", "lavozim", "work_start"):
+        if key in body:
+            fields[key] = str(body.get(key) or "").strip()
+    if "role" in body:
+        role = str(body.get("role", "")).strip().lower()
+        if role in {"employee", "hr", "director"}:
+            fields["role"] = role
+    if "category" in body:
+        category = str(body.get("category", "")).strip().lower()
+        if category in {"oddiy", "haydovchi", "rahbar", "masofaviy", "amaliyotchi"}:
+            fields["category"] = category
+    if "telegram" in body:
+        fields["telegram"] = str(body.get("telegram") or "").strip()
+    if not fields:
+        return json_err("O'zgartiriladigan maydon yo'q")
+
+    ok, msg = _update_employee_row(card, fields)
+    if not ok:
+        return json_err(msg)
+
+    # users.xlsx keshlarini (roles.py, live_worker) majburan yangilash —
+    # keyingi so'rov eski ma'lumotni qaytarmasin.
+    try:
+        import roles
+        roles.reload()
+    except Exception:
+        pass
+
+    return json_ok({"ok": True, "card": card, "updated": sorted(fields.keys())})
+
+
+async def nvr_lookup(request):
+    """HR/super_admin: berilgan qurilma raqami (faceid/Work Number) bo'yicha
+    NVR eksportidagi (nvr_reports/*.xls) ma'lumotni qaytaradi — yangi/
+    tahrirlanayotgan xodim ma'lumoti bilan solishtirish uchun.
+    ?faceid=<qurilma raqami>
+    Javob: {found: bool, profile?: {name, department, position, phone,
+    birthday}, missing_fields?: [...], message?}"""
+    auth, err = _auth_hr(request)
+    if err:
+        return err
+    work_no = "".join(ch for ch in str(request.rel_url.query.get("faceid", "")) if ch.isdigit())
+    if not work_no:
+        return json_err("faceid (qurilma raqami) kerak")
+    try:
+        import nvr_report_import as nri
+    except Exception as e:
+        return json_err(f"NVR moduli yuklanmadi: {e}", status=500)
+    profile = nri.nvr_profile_for_workno(work_no)
+    if not profile:
+        return json_ok({
+            "ok": True, "found": False,
+            "message": "Bu qurilma raqami (Work Number) bo'yicha NVR eksportida "
+                       "hali hech qanday ma'lumot topilmadi",
+        })
+    missing = [k for k in ("name", "department", "position", "phone", "birthday")
+               if not profile.get(k)]
+    return json_ok({"ok": True, "found": True, "profile": profile, "missing_fields": missing})
+
+
 async def employee_add(request):
     """HR: yangi xodimни users.xlsx ga qo'shadi va hisob ochadi.
     {familya, ism, sharif?, card, role?, category?, work_start?, telegram?}"""
@@ -1149,10 +1343,14 @@ async def employee_add(request):
     category = str(body.get("category", "")).strip().lower() or "oddiy"
     work_start = str(body.get("work_start", "")).strip()
     telegram = str(body.get("telegram", "")).strip()
+    faceid = "".join(ch for ch in str(body.get("faceid", "")) if ch.isdigit())
+    bolim = str(body.get("bolim", "")).strip()
+    lavozim = str(body.get("lavozim", "")).strip()
 
     ok, msg = _add_employee_row({
         "familya": familya, "ism": ism, "sharif": sharif, "card": card,
-        "role": role, "category": category,
+        "role": role, "category": category, "faceid": faceid,
+        "bolim": bolim, "lavozim": lavozim,
         "work_start": work_start, "telegram": telegram,
     })
     if not ok:
@@ -1711,4 +1909,7 @@ def register(app, require_login, role_of, ok, errf):
     app.router.add_post(f"{p}/employee_remove", employee_remove)
     app.router.add_get(f"{p}/accounts_list", accounts_list)
     app.router.add_post(f"{p}/employee_add", employee_add)
+    app.router.add_get(f"{p}/employee_get", employee_get)
+    app.router.add_post(f"{p}/employee_update", employee_update)
+    app.router.add_get(f"{p}/nvr_lookup", nvr_lookup)
     app.router.add_post(f"{p}/photo_fetch_api", photo_fetch_api)

@@ -194,6 +194,16 @@ const T = {
     empAddBtn: "Qo'shish", empAddDone: "Xodim qo'shildi ✓",
     empAddReq: "Familiya, ism va JSHSHIR to'ldiring",
     empPhotoOk: "📷 Rasm yuklandi", empPhotoNo: "📷 Rasmni Boshqaruv → \"Rasm yuklash\" orqali qo'shing",
+    empBolim: "Bo'lim", empLavozim: "Lavozim nomi", empFaceid: "Qurilma raqami (NVR Work Number)",
+    admEmpEdit: "Xodimni tahrirlash",
+    admEmpEditHint: "Tahrirlanadigan xodimni tanlang — joriy ma'lumotlari users.xlsx dan yuklanadi. O'zgartirib \"Saqlash\"ни bosing.",
+    empEditLoad: "Ma'lumotni yuklash", empEditSave: "Saqlash", empEditDone: "Saqlandi ✓",
+    empFaceidReq: "Avval qurilma raqamini (faceid) kiriting",
+    empNvrCheck: "🛰 NVR bilan solishtirish",
+    empNvrResultTitle: "NVR eksportidagi ma'lumot bilan solishtirish natijasi",
+    empNvrNotFound: "Bu qurilma raqami bo'yicha NVR eksportida hali ma'lumot yo'q",
+    empNvrFromNvr: "NVR'da", empNvrMissing: "NVR'da yo'q", empNvrMismatch: "Mos emas", empNvrMatch: "Mos",
+    empNvrName: "Ism-familiya", empNvrDept: "Bo'lim", empNvrPos: "Lavozim", empNvrPhone: "Telefon", empNvrBday: "Tug'ilgan sana",
     admAccounts: "Hisoblar", admAccountsHint: "Barcha hisoblar. Qidiring va keraksizини (xato ochilgan / ishдан ketган) o'chiring.",
     accSearch: "Ism yoki JSHSHIR bo'yicha qidirish…", accDelete: "O'chirish",
     accDelConfirm: "Bu hisob o'chirilsinmi? Xodim endi kira olmaydi.", accDeleted: "Hisob o'chirildi",
@@ -1772,6 +1782,7 @@ const ADM_TILES = [
   { id: "reyting", ico: "🏆", key: "admRating", view: true },
   { id: "latelist", ico: "⏰", key: "admLateList", view: true },
   { id: "empadd", ico: "👤", key: "admEmpAdd" },
+  { id: "empedit", ico: "✏️", key: "admEmpEdit" },
   { id: "newacc", ico: "🆕", key: "admNewAcc" },
   { id: "accounts", ico: "🗑", key: "admAccounts" },
   { id: "empout", ico: "🚫", key: "admEmpOut" },
@@ -1835,7 +1846,7 @@ async function admRenderSection() {
     broadcast: admSecBroadcast, exempt: admSecExempt, reason: () => admSecReason(false),
     exit_reason: () => admSecReason(true), late: admSecLate, holidays: admSecHolidays,
     hidden: admSecHidden, worktime: admSecWorktime, photo: admSecPhoto, olim: admSecOlim,
-    interns: admSecInterns, exit: admSecExitReasons, resetpw: admSecResetPw, newacc: admSecNewAcc, accounts: admSecAccounts, empadd: admSecEmpAdd, empout: admSecEmpOut, latelist: admSecLateList, reyting: admSecRating, survey: admSecSurvey, yoqlama: admSecYoqlama,
+    interns: admSecInterns, exit: admSecExitReasons, resetpw: admSecResetPw, newacc: admSecNewAcc, accounts: admSecAccounts, empadd: admSecEmpAdd, empedit: admSecEmpEdit, empout: admSecEmpOut, latelist: admSecLateList, reyting: admSecRating, survey: admSecSurvey, yoqlama: admSecYoqlama,
     expl: admSecExpl, monitor: admSecMonitor, attedit: admSecAttendanceEdit,
     reports: admSecReports,
   };
@@ -3009,6 +3020,136 @@ async function admSecLateList(ym) {
   bind();
 }
 
+// ─── Xodimni tahrirlash (mavjud xodim, users.xlsx) ───
+// Eslatma: bu yerda `admEmployees` (dashboard'da ko'rinadiganlar) emas,
+// balki "accounts_list" ishlatiladi — chunki dashboard'dan yashirilgan
+// xodimni ham topib, tahrirlay (masalan qayta ko'rinadigan qilish uchun)
+// olish kerak.
+async function admSecEmpEdit() {
+  $("#app").innerHTML = shell(skeleton(2));
+  const { status, data } = await api("/api/mobile/admin/accounts_list");
+  const accList = (status === 200 && data && data.accounts) ? data.accounts : [];
+  const opts = accList.map(a =>
+    `<option value="${esc(a.name)} — ${esc(a.card)}"></option>`).join("");
+  $("#app").innerHTML = shell(`
+    ${admBackHead("admEmpEdit")}
+    <div class="sec">
+      <p class="adm-hint">${t("admEmpEditHint")}</p>
+      <input class="adm-inp" id="eePick" list="eePick_dl" placeholder="${t("admPickEmp")}" autocomplete="off">
+      <datalist id="eePick_dl">${opts}</datalist>
+      <button class="btn adm-primary" id="eeLoadBtn" style="margin-top:8px">${t("empEditLoad")}</button>
+      <div id="eeForm"></div>
+    </div>`);
+  bindShell(); admBindBack();
+
+  const pickCard = () => {
+    const v = ($("#eePick").value || "").trim();
+    const m = v.match(/—\s*(\d{6,})\s*$/);
+    if (m) return m[1];
+    return /^\d{6,}$/.test(v) ? v : "";
+  };
+
+  $("#eeLoadBtn").onclick = async () => {
+    const card = pickCard();
+    if (!card) return admToast(t("empOutFind"), false);
+    const btn = $("#eeLoadBtn"); btn.disabled = true;
+    const { status, data } = await api("/api/mobile/admin/employee_get?card=" + card);
+    btn.disabled = false;
+    if (status !== 200 || !data || !data.employee) {
+      return admToast((data && data.error) || t("admFail"), false);
+    }
+    admRenderEmpEditForm(data.employee);
+  };
+}
+
+// NVR eksportidagi profilni (faceid bo'yicha) kiritilgan ism/bo'lim/lavozim
+// bilan solishtirib, natijani `boxSel` konteyneriga chiqaradi. Xodim
+// qo'shish va tahrirlash formalarining ikkisida ham ishlatiladi.
+async function admNvrCheckInto(boxSel, faceid, enteredName, enteredDept, enteredPos) {
+  const box = $(boxSel);
+  if (!box) return;
+  if (!faceid) return admToast(t("empFaceidReq"), false);
+  const { status, data } = await api("/api/mobile/admin/nvr_lookup?faceid=" + faceid);
+  if (status !== 200 || !data) { box.innerHTML = `<div class="empty">${t("admFail")}</div>`; return; }
+  if (!data.found) { box.innerHTML = `<div class="warn-box">${esc(data.message || t("empNvrNotFound"))}</div>`; return; }
+  const p = data.profile;
+  const entered = { name: enteredName, department: enteredDept, position: enteredPos, phone: "", birthday: "" };
+  const fields = [["name", "empNvrName"], ["department", "empNvrDept"], ["position", "empNvrPos"],
+                   ["phone", "empNvrPhone"], ["birthday", "empNvrBday"]];
+  const rows = fields.map(([k, labelKey]) => {
+    const nvrVal = (p[k] || "").trim();
+    const enteredVal = (entered[k] || "").trim();
+    let cls = "ok", badgeKey = "empNvrMatch";
+    if (!nvrVal) { cls = "abs"; badgeKey = "empNvrMissing"; }
+    else if (enteredVal && nvrVal.toLowerCase() !== enteredVal.toLowerCase()) { cls = "late"; badgeKey = "empNvrMismatch"; }
+    return `<div class="pi" style="align-items:flex-start">
+      <div class="nm" style="flex:1"><b>${t(labelKey)}</b><br>
+        <span style="opacity:.75">${t("empNvrFromNvr")}: ${esc(nvrVal) || "—"}</span></div>
+      <span class="badge ${cls}">${t(badgeKey)}</span>
+    </div>`;
+  }).join("");
+  box.innerHTML = `<div class="adm-sub" style="margin-top:8px">${t("empNvrResultTitle")}</div>${rows}`;
+}
+
+function admRenderEmpEditForm(emp) {
+  const roleOpts = [["employee", "empRoleEmp"], ["hr", "empRoleHr"], ["director", "empRoleDir"]]
+    .map(([v, k]) => `<option value="${v}" ${emp.role === v ? "selected" : ""}>${t(k)}</option>`).join("");
+  const catOpts = [["oddiy", "empCatOddiy"], ["haydovchi", "empCatHaydovchi"],
+                   ["rahbar", "empCatRahbar"], ["masofaviy", "empCatMasofaviy"]]
+    .map(([v, k]) => `<option value="${v}" ${emp.category === v ? "selected" : ""}>${t(k)}</option>`).join("");
+
+  $("#eeForm").innerHTML = `
+    <div class="sec" style="margin-top:10px">
+      <input class="adm-inp" id="eeFam" value="${esc(emp.familya)}" placeholder="${t("empFam")}">
+      <input class="adm-inp" id="eeIsm" style="margin-top:8px" value="${esc(emp.ism)}" placeholder="${t("empIsm")}">
+      <input class="adm-inp" id="eeShr" style="margin-top:8px" value="${esc(emp.sharif)}" placeholder="${t("empSharif")}">
+      <input class="adm-inp" id="eeBolim" style="margin-top:8px" value="${esc(emp.bolim)}" placeholder="${t("empBolim")}">
+      <input class="adm-inp" id="eeLavozim" style="margin-top:8px" value="${esc(emp.lavozim)}" placeholder="${t("empLavozim")}">
+      <input class="adm-inp" id="eeFaceid" style="margin-top:8px" value="${esc(emp.faceid)}" placeholder="${t("empFaceid")}">
+      <select class="adm-inp" id="eeRole" style="margin-top:8px">${roleOpts}</select>
+      <select class="adm-inp" id="eeCat" style="margin-top:8px">${catOpts}</select>
+      <input class="adm-inp" id="eeWork" style="margin-top:8px" value="${esc(emp.work_start)}" placeholder="${t("empWork")}">
+      <button class="btn secondary" id="eeNvrBtn" style="margin-top:10px">${t("empNvrCheck")}</button>
+      <div id="eeNvrBox"></div>
+      <button class="btn adm-primary" id="eeSaveBtn" style="margin-top:10px">${t("empEditSave")}</button>
+      <div id="eeSaveRes"></div>
+    </div>`;
+
+  $("#eeNvrBtn").onclick = async () => {
+    const faceid = ($("#eeFaceid").value || "").trim();
+    const btn = $("#eeNvrBtn"); btn.disabled = true;
+    await admNvrCheckInto("#eeNvrBox", faceid,
+      [$("#eeFam").value, $("#eeIsm").value, $("#eeShr").value].filter(Boolean).join(" "),
+      $("#eeBolim").value, $("#eeLavozim").value);
+    btn.disabled = false;
+  };
+
+  $("#eeSaveBtn").onclick = async () => {
+    const body = {
+      card: emp.card,
+      familya: ($("#eeFam").value || "").trim(),
+      ism: ($("#eeIsm").value || "").trim(),
+      sharif: ($("#eeShr").value || "").trim(),
+      bolim: ($("#eeBolim").value || "").trim(),
+      lavozim: ($("#eeLavozim").value || "").trim(),
+      faceid: ($("#eeFaceid").value || "").trim(),
+      role: $("#eeRole").value,
+      category: $("#eeCat").value,
+      work_start: ($("#eeWork").value || "").trim(),
+    };
+    const btn = $("#eeSaveBtn"); btn.disabled = true;
+    const { status, data } = await api("/api/mobile/admin/employee_update", { method: "POST", body });
+    btn.disabled = false;
+    if (status === 200 && data && data.ok) {
+      admEmployees = []; // keshni tozalaymiz — keyingi ro'yxatlar yangilansin
+      admToast(t("empEditDone"));
+      $("#eeSaveRes").innerHTML = `<div class="exp-ok" style="margin-top:10px">${t("empEditDone")}</div>`;
+    } else {
+      admToast((data && data.error) || t("admFail"), false);
+    }
+  };
+}
+
 // ─── Xodim qo'shish (users.xlsx ga) ───
 async function admSecEmpAdd() {
   $("#app").innerHTML = shell(`
@@ -3019,6 +3160,11 @@ async function admSecEmpAdd() {
       <input class="adm-inp" id="eIsm" style="margin-top:8px" placeholder="${t("empIsm")}">
       <input class="adm-inp" id="eShr" style="margin-top:8px" placeholder="${t("empSharif")}">
       <input class="adm-inp" id="ePin" inputmode="numeric" maxlength="14" style="margin-top:8px" placeholder="${t("empPin")}">
+      <input class="adm-inp" id="eBolim" style="margin-top:8px" placeholder="${t("empBolim")}">
+      <input class="adm-inp" id="eLavozim" style="margin-top:8px" placeholder="${t("empLavozim")}">
+      <input class="adm-inp" id="eFaceid" style="margin-top:8px" placeholder="${t("empFaceid")}">
+      <button class="btn secondary" id="eNvrBtn" type="button" style="margin-top:8px">${t("empNvrCheck")}</button>
+      <div id="eNvrBox"></div>
       <select class="adm-inp" id="eRole" style="margin-top:8px">
         <option value="employee">${t("empRoleEmp")}</option>
         <option value="hr">${t("empRoleHr")}</option>
@@ -3035,6 +3181,14 @@ async function admSecEmpAdd() {
       <div id="eResult"></div>
     </div>`);
   bindShell(); admBindBack();
+  $("#eNvrBtn").onclick = async () => {
+    const faceid = ($("#eFaceid").value || "").trim();
+    const btn = $("#eNvrBtn"); btn.disabled = true;
+    await admNvrCheckInto("#eNvrBox", faceid,
+      [$("#eFam").value, $("#eIsm").value, $("#eShr").value].filter(Boolean).join(" "),
+      $("#eBolim").value, $("#eLavozim").value);
+    btn.disabled = false;
+  };
   $("#eBtn").onclick = async () => {
     const familya = ($("#eFam").value || "").trim();
     const ism = ($("#eIsm").value || "").trim();
@@ -3043,6 +3197,9 @@ async function admSecEmpAdd() {
     if (!familya || !ism || card.length < 9) return admToast(t("empAddReq"), false);
     const body = {
       familya, ism, sharif, card,
+      bolim: ($("#eBolim").value || "").trim(),
+      lavozim: ($("#eLavozim").value || "").trim(),
+      faceid: ($("#eFaceid").value || "").trim(),
       role: $("#eRole").value, category: $("#eCat").value,
       work_start: ($("#eWork").value || "").trim(),
     };
@@ -3057,7 +3214,8 @@ async function admSecEmpAdd() {
         ${t("admNewAccPass")} <b style="font-size:22px;letter-spacing:2px">${esc(data.password)}</b>
         <div style="font-size:12px;margin-top:8px;opacity:.85">${photoLine}</div></div>`;
       admToast(t("admDone"));
-      ["eFam","eIsm","eShr","ePin","eWork"].forEach(id => { const el = $("#"+id); if (el) el.value = ""; });
+      ["eFam","eIsm","eShr","ePin","eBolim","eLavozim","eFaceid","eWork"].forEach(id => { const el = $("#"+id); if (el) el.value = ""; });
+      $("#eNvrBox").innerHTML = "";
     } else admToast((data && data.error) || t("admFail"), false);
   };
 }
