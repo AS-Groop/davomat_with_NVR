@@ -106,7 +106,7 @@ const T = {
     expKindExit: "Erta chiqish",
     updated: "Yangilandi",
     c_inside: "Ishda", c_lunch: "Tushlik", c_out: "Chiqqan", c_late: "Kech", c_absent: "Kelmagan",
-    c_interns: "Amaliyotchilar", c_safari: "Xizmat safari", c_tatil: "Mehnat ta'tili",
+    c_interns: "Amaliyotchilar", c_safari: "Xizmat safari", c_tatil: "Mehnat ta'tili", c_bemor: "Bemorlik",
     exFrom2: "dan", exTo2: "gacha", excusedTag: "Sababli",
     nobody: "Hech kim yo'q", loading: "Yuklanmoqda…",
     expAsk: "So'rash", expAsked: "So'raldi", expDone: "✓ Javob berdi",
@@ -139,7 +139,7 @@ const T = {
     admConfirmSend: "Xabar {n} kishiga yuborilsinmi?", admSentRes: "Yuborildi: {s} · Xato: {f}",
     admPickEmp: "Xodimni qidiring…", admNote: "Izoh (ixtiyoriy)", admActive: "Faol", admUpcoming: "Kelgusi",
     admEmptyList: "Ro'yxat bo'sh", admDone: "Bajarildi ✓", admFail: "Xatolik, qayta urinib ko'ring",
-    admTypeRuxsat: "🏖 Mehnat ta'tili", admTypeSafari: "✈️ Safari", admTypeTadbir: "🎤 Tadbir",
+    admTypeRuxsat: "🏖 Mehnat ta'tili", admTypeSafari: "✈️ Safari", admTypeTadbir: "🎤 Tadbir", admTypeBemor: "🤒 Bemorlik",
     admTadbirHint: "Tadbir/seminarda bo'lgan xodimlarni belgilang. Ular o'sha kuni kechikkan hisoblanmaydi va to'liq ish kuni (8 soat) yoziladi.",
     admPickMany: "Xodimlarni tanlang (bir nechta)", admSelected: "Tanlangan",
     admSearchEmp: "Qidirish…", admPickNone: "Hech kim tanlanmadi",
@@ -291,7 +291,7 @@ const T = {
     expKindExit: "Ранний уход",
     updated: "Обновлено",
     c_inside: "На работе", c_lunch: "Обед", c_out: "Ушли", c_late: "Опозд.", c_absent: "Нет",
-    c_interns: "Практиканты", c_safari: "Командировка", c_tatil: "Трудовой отпуск",
+    c_interns: "Практиканты", c_safari: "Командировка", c_tatil: "Трудовой отпуск", c_bemor: "Больничный",
     exFrom2: "с", exTo2: "по", excusedTag: "Уважит.",
     nobody: "Никого нет", loading: "Загрузка…",
     expAsk: "Запросить", expAsked: "Запрошено", expDone: "✓ Ответил",
@@ -324,7 +324,7 @@ const T = {
     admConfirmSend: "Отправить сообщение {n} сотрудникам?", admSentRes: "Отправлено: {s} · Ошибки: {f}",
     admPickEmp: "Поиск сотрудника…", admNote: "Примечание (необязательно)", admActive: "Активные", admUpcoming: "Предстоящие",
     admEmptyList: "Список пуст", admDone: "Готово ✓", admFail: "Ошибка, попробуйте снова",
-    admTypeRuxsat: "🏖 Трудовой отпуск", admTypeSafari: "✈️ Командировка", admTypeTadbir: "🎤 Мероприятие",
+    admTypeRuxsat: "🏖 Трудовой отпуск", admTypeSafari: "✈️ Командировка", admTypeTadbir: "🎤 Мероприятие", admTypeBemor: "🤒 Больничный",
     admTadbirHint: "Отметьте сотрудников на мероприятии/семинаре. В этот день опоздание не считается, засчитывается полный рабочий день (8 часов).",
     admPickMany: "Выберите сотрудников (несколько)", admSelected: "Выбрано",
     admSearchEmp: "Поиск…", admPickNone: "Никто не выбран",
@@ -1492,6 +1492,7 @@ async function viewHR(staffMode) {
     inside: data.at_work || [], lunch: data.lunch || [], out: data.not_at_work || [],
     late: data.late || [], absent: data.absent || [],
     interns: data.interns || [], safari: data.safari || [], tatil: data.tatil || [],
+    bemor: data.bemor || [],
   };
   const impliedSt = { inside: "ishda", lunch: "tushlikda", out: "ishda_emas", late: "", absent: "kelmagan" };
 
@@ -1507,10 +1508,11 @@ async function viewHR(staffMode) {
       ${lists.interns.length ? `<button class="chip ${!staffMode && hrFilter === "interns" ? "on" : ""}" data-f="interns">🎓 ${t("c_interns")} · ${lists.interns.length}</button>` : ""}
       <button class="chip ${!staffMode && hrFilter === "safari" ? "on" : ""}" data-f="safari">✈️ ${t("c_safari")} · ${lists.safari.length}</button>
       <button class="chip ${!staffMode && hrFilter === "tatil" ? "on" : ""}" data-f="tatil">🏖 ${t("c_tatil")} · ${lists.tatil.length}</button>
+      ${lists.bemor.length ? `<button class="chip ${!staffMode && hrFilter === "bemor" ? "on" : ""}" data-f="bemor">🤒 ${t("c_bemor")} · ${lists.bemor.length}</button>` : ""}
     </div>`;
 
   const subText = (r, stKey, listKey) => {
-    if (listKey === "safari" || listKey === "tatil") {
+    if (listKey === "safari" || listKey === "tatil" || listKey === "bemor") {
       const df = fmtDayMon(r.date_from), dt = fmtDayMon(r.date_to || r.date_from);
       const range = df ? `${df} → ${dt}` : "";
       return r.note ? `${range}${range ? " · " : ""}${esc(r.note)}` : range;
@@ -1528,6 +1530,7 @@ async function viewHR(staffMode) {
     const emp = empMap[String(r.card_number)] || r;
     const stKey = emp.status || impliedSt[listKey] || "ishda";
     const ring = listKey === "safari" ? "s" : listKey === "tatil" ? "a"
+      : listKey === "bemor" ? "r"
       : (RING[stKey] || "s");
     let right;
     if (listKey === "late" || listKey === "absent") {
@@ -1540,6 +1543,8 @@ async function viewHR(staffMode) {
       right = `<span class="badge out">✈️</span>`;
     } else if (listKey === "tatil") {
       right = `<span class="badge late">🏖</span>`;
+    } else if (listKey === "bemor") {
+      right = `<span class="badge abs">🤒</span>`;
     } else if (listKey === "interns") {
       const inside = stKey === "ichkarida" || stKey === "ishda";
       right = `<span class="badge ${inside ? "ok" : "out"}">${inside ? t("c_inside") : t("c_out")}</span>`;
@@ -1891,7 +1896,7 @@ async function admSecExempt() {
   const { data } = await api("/api/mobile/admin/exemptions");
   const active = (data && data.active) || [];
   const upcoming = (data && data.upcoming) || [];
-  const tIcon = (ty) => ty === "safari" ? "✈️" : ty === "tadbir" ? "🎤" : "🏖";
+  const tIcon = (ty) => ty === "safari" ? "✈️" : ty === "tadbir" ? "🎤" : ty === "bemor" ? "🤒" : "🏖";
   const recRow = (r) => `<div class="adm-row">
     <div class="adm-rmain"><b>${esc(fmtName(r.full_name) || r.card_number)}</b>
       <span>${tIcon(r.type)} ${esc(r.date_from)} → ${esc(r.date_to)}${r.note ? " · " + esc(r.note) : ""}</span></div>
@@ -1906,6 +1911,7 @@ async function admSecExempt() {
         <button class="on" data-v="ruxsat">${t("admTypeRuxsat")}</button>
         <button data-v="safari">${t("admTypeSafari")}</button>
         <button data-v="tadbir">${t("admTypeTadbir")}</button>
+        <button data-v="bemor">${t("admTypeBemor")}</button>
       </div>
       <div id="exPickOne">${admEmpPickerHtml("exCard")}</div>
       <div id="exPickMany" style="display:none">

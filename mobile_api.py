@@ -240,7 +240,7 @@ def _attach_excused(rows, excused):
 
 
 def _exemptions_split():
-    """Bugun faol ruxsat/safarilarni ikkiga ajratadi -> (safari_list, tatil_list)."""
+    """Bugun faol ruxsat/safari/bemorlikni ajratadi -> (safari_list, tatil_list, bemor_list)."""
     d = _today_iso()
     data = _load(EXEMPTIONS_FILE, {"records": []})
     records = data.get("records", []) if isinstance(data, dict) else []
@@ -259,7 +259,7 @@ def _exemptions_split():
         prev = active.get(card)
         if prev is None or str(info.get("set_at", "")) >= str(prev.get("set_at", "")):
             active[card] = info
-    safari, tatil = [], []
+    safari, tatil, bemor = [], [], []
     for card, info in active.items():
         item = {
             "card_number": card,
@@ -274,7 +274,9 @@ def _exemptions_split():
             safari.append(item)
         elif ty in ("ruxsat", "tatil", "mehnat_tatili", "mehnat tatili", "tatil_mehnat"):
             tatil.append(item)
-    return safari, tatil
+        elif ty in ("bemor", "bemorlik", "kasal", "kasallik", "bolen", "болен", "больной"):
+            bemor.append(item)
+    return safari, tatil, bemor
 
 
 # ─────────────────────────── AUTH YORDAMCHILARI ───────────────────────────
@@ -894,7 +896,7 @@ async def all_employees(request):
     _attach_excused(late, excused)
     _attach_excused(employees, excused)
 
-    safari, tatil = _exemptions_split()
+    safari, tatil, bemor = _exemptions_split()
 
     return json_ok({
         "updated_at": cache.get("updated_at", ""),
@@ -908,6 +910,7 @@ async def all_employees(request):
         "interns": interns,
         "safari": safari,
         "tatil": tatil,
+        "bemor": bemor,
     })
 
 

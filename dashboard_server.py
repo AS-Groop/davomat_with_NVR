@@ -36,10 +36,10 @@ DASHBOARD_BIND = os.getenv("DASHBOARD_BIND", "127.0.0.1")
 DASHBOARD_REFRESH_SECONDS = int(os.getenv("DASHBOARD_REFRESH_SECONDS", "10"))
 # Carousel (panellar guruhi) almashinish vaqti — sekund.
 DASHBOARD_CAROUSEL_SECONDS = int(os.getenv("DASHBOARD_CAROUSEL_SECONDS", "30"))
-# Carousel guruhlari — qaysi panel qaysi guruhda. Panellar: inside, outside, safari, ruxsat.
-# Guruhlar "|" bilan, panellar "," bilan ajratiladi.
+# Carousel guruhlari — qaysi panel qaysi guruhda. Panellar: inside, outside,
+# safari, ruxsat, bemor, intern. Guruhlar "|" bilan, panellar "," bilan ajratiladi.
 DASHBOARD_CAROUSEL_GROUPS = os.getenv(
-    "DASHBOARD_CAROUSEL_GROUPS", "outside,safari | ruxsat"
+    "DASHBOARD_CAROUSEL_GROUPS", "outside,safari | ruxsat | bemor"
 ).strip()
 try:
     import tashkilot as _tashkilot
@@ -445,7 +445,7 @@ def collect_state():
 
     today_ex = active_ex
 
-    safari_list, ruxsat_list, tadbir_list = [], [], []
+    safari_list, ruxsat_list, tadbir_list, bemor_list = [], [], [], []
     for card, info in (today_ex or {}).items():
         item = {
             "card_number": card,
@@ -462,6 +462,8 @@ def collect_state():
             tadbir_list.append(item)
         elif t in ("ruxsat", "tatil", "mehnat_tatili", "mehnat tatili", "tatil_mehnat"):
             ruxsat_list.append(item)
+        elif t in ("bemor", "bemorlik", "kasal", "kasallik", "bolen", "болен", "больной"):
+            bemor_list.append(item)
 
     at_work = _filter_hidden(cache.get("at_work", []))
     at_lunch = _filter_hidden(cache.get("lunch", []))
@@ -594,7 +596,7 @@ def collect_state():
         "summary": {
             "inside": len(inside), "outside": len(outside),
             "safari": len(safari_list), "ruxsat": len(ruxsat_list),
-            "tadbir": len(tadbir_list),
+            "tadbir": len(tadbir_list), "bemor": len(bemor_list),
             "alerts": len(alerts),
             "late": len(late_shown), "absent": len(absent_shown),
             "interns": len(interns_list),
@@ -604,6 +606,7 @@ def collect_state():
         "safari": safari_list,
         "ruxsat": ruxsat_list,
         "tadbir": tadbir_list,
+        "bemor": bemor_list,
         "interns": interns_list,
         "late": late_shown,
         "absent": absent_shown,

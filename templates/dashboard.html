@@ -26,6 +26,7 @@
   --outside:#fbbf24;
   --safari:#a78bfa;
   --ruxsat:#22d3ee;
+  --bemor:#f472b6;
   --late:#fb923c;
   --absent:#ef4444;
   --alert:#f87171;
@@ -187,6 +188,7 @@ body{
 .panel.outside::before{background:var(--outside)}
 .panel.safari::before{background:var(--safari)}
 .panel.ruxsat::before{background:var(--ruxsat)}
+.panel.bemor::before{background:var(--bemor)}
 .panel.feed::before{background:var(--teal)}
 .panel.late::before{background:var(--late)}
 .panel.absent::before{background:var(--absent)}
@@ -208,6 +210,7 @@ body{
 .panel.outside .title-dot{background:var(--outside);box-shadow:0 0 8px var(--outside)}
 .panel.safari .title-dot{background:var(--safari);box-shadow:0 0 8px var(--safari)}
 .panel.ruxsat .title-dot{background:var(--ruxsat);box-shadow:0 0 8px var(--ruxsat)}
+.panel.bemor .title-dot{background:var(--bemor);box-shadow:0 0 8px var(--bemor)}
 .panel.late .title-dot{background:var(--late);box-shadow:0 0 8px var(--late)}
 .panel.absent .title-dot{background:var(--absent);box-shadow:0 0 8px var(--absent)}
 .panel.feed .title-dot{background:var(--teal);box-shadow:0 0 8px var(--teal)}
@@ -220,6 +223,7 @@ body{
 .panel.outside .panel-title{color:var(--outside)}
 .panel.safari .panel-title{color:var(--safari)}
 .panel.ruxsat .panel-title{color:var(--ruxsat)}
+.panel.bemor .panel-title{color:var(--bemor)}
 .panel.late .panel-title{color:var(--late)}
 .panel.absent .panel-title{color:var(--absent)}
 .panel.intern .panel-title{color:#f0abfc}
@@ -754,6 +758,13 @@ body{
             <div class="panel-list" id="listIntern"></div>
           </div>
         </div>
+        <div class="carousel-group" data-group="2">
+          <div class="panel bemor" data-panel="bemor">
+            <div class="panel-corner"><svg viewBox="0 0 100 68"><rect x="6" y="8" width="40" height="11" fill="#f472b6"/><rect x="50" y="4" width="40" height="11" fill="#f472b6" opacity="0.6"/><rect x="6" y="28" width="40" height="11" fill="#f472b6"/><rect x="50" y="24" width="40" height="11" fill="#f472b6" opacity="0.6"/><rect x="6" y="48" width="40" height="11" fill="#f472b6"/><rect x="50" y="44" width="40" height="11" fill="#f472b6" opacity="0.6"/></svg></div>
+            <div class="panel-head"><div class="panel-title-row"><div class="title-dot"></div><div class="panel-title">Bemorlik</div></div><div class="panel-count" id="cntBemor">—</div></div>
+            <div class="panel-list" id="listBemor"></div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1025,6 +1036,7 @@ async function refresh(){
     setText('cntSafari', s.summary.safari);
     setText('cntRuxsat', s.summary.ruxsat);
     setText('cntTadbir', (s.summary && s.summary.tadbir) || (s.tadbir || []).length || 0);
+    setText('cntBemor', (s.summary && s.summary.bemor) || (s.bemor || []).length || 0);
     setText('cntLate', s.summary.late || 0);
     setText('cntAbsent', s.summary.absent || 0);
     setText('cntIntern', (s.summary && s.summary.interns) || (s.interns || []).length || 0);
@@ -1033,6 +1045,7 @@ async function refresh(){
     renderList('listOutside', s.outside, rowOutside);
     renderList('listSafari', s.safari, rowExempt);
     renderList('listRuxsat', s.ruxsat, rowExempt);
+    renderList('listBemor', s.bemor || [], rowExempt);
     renderList('listTadbir', s.tadbir || [], rowExempt);
     ABS_HAS_TADBIR = ((s.tadbir || []).length > 0);
     if(window.__absSync) window.__absSync();

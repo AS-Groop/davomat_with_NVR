@@ -226,8 +226,8 @@ async def exemptions_add(request):
     d_from = str(body.get("date_from", "")).strip()
     d_to = str(body.get("date_to", "")).strip() or d_from
     note = str(body.get("note", "")).strip()
-    if not card or ex_type not in ("ruxsat", "safari", "tadbir"):
-        return json_err("card va type (ruxsat/safari/tadbir) kerak")
+    if not card or ex_type not in ("ruxsat", "safari", "tadbir", "bemor"):
+        return json_err("card va type (ruxsat/safari/tadbir/bemor) kerak")
     if not DATE_RE.match(d_from) or not DATE_RE.match(d_to):
         return json_err("Sana formati: YYYY-MM-DD")
     if d_to < d_from:
